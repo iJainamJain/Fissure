@@ -1,1 +1,2 @@
 httpx>=0.27
+customtkinter>=5.2
