@@ -7,7 +7,7 @@ import json
 from fissure.ai.agent import Agent
 from fissure.ai.gate import Gate
 from fissure.ai.hive import Budget, Hive
-from fissure.ai.llm import LLMResponse, MockLLMClient, ToolCall
+from fissure.ai.llm import GeminiClient, LLMResponse, MockLLMClient, ToolCall, ToolSpec
 from fissure.targets import normalize_target
 
 
@@ -88,3 +88,27 @@ def test_gate_requires_approval_for_post():
 
 def test_gate_allows_in_scope_get():
     assert _gate().check_request("GET", "http://localhost:8080/app/search", params={"q": "test"}).allowed
+
+
+# ---- Gemini format translation (pure, no SDK/key needed) ----
+
+def test_gemini_message_translation():
+    messages = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": [{"type": "text", "text": "ok"},
+                                          {"type": "tool_use", "id": "c1", "name": "crawl", "input": {"x": 1}}]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "c1", "content": '{"ok":true}'}]},
+    ]
+    contents = GeminiClient._to_contents(messages)
+    assert contents[0] == {"role": "user", "parts": [{"text": "hi"}]}
+    assert contents[1]["role"] == "model"
+    assert any("function_call" in p for p in contents[1]["parts"])
+    fr = contents[2]["parts"][0]["function_response"]
+    assert fr["name"] == "crawl"  # mapped back from the tool_use id
+    assert fr["response"]["result"] == '{"ok":true}'
+
+
+def test_gemini_tools_translation():
+    decls = GeminiClient._to_tools([ToolSpec("crawl", "desc", {"type": "object", "properties": {}})])
+    assert decls[0]["function_declarations"][0] == {
+        "name": "crawl", "description": "desc", "parameters": {"type": "object", "properties": {}}}

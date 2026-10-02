@@ -106,6 +106,94 @@ class AnthropicClient:
         return out[:max_out]
 
 
+class GeminiClient:
+    """Google Gemini client (free-tier friendly). Requires `pip install google-genai`
+    and GEMINI_API_KEY. Translates the agent's Anthropic-style tool-use messages
+    to Gemini's function-calling format and back.
+    """
+
+    def __init__(self, model: str, *, tier: str = "brain", api_key: str | None = None) -> None:
+        self.model = model
+        self.tier = tier
+        self._api_key = api_key
+        self.__client = None
+
+    @property
+    def _client(self):
+        if self.__client is None:
+            try:
+                from google import genai
+            except ImportError as exc:  # pragma: no cover - env-dependent
+                raise RuntimeError("The 'google-genai' package is required: pip install google-genai") from exc
+            self.__client = genai.Client(api_key=self._api_key)
+        return self.__client
+
+    @staticmethod
+    def _to_contents(messages: list[dict]) -> list[dict]:
+        """Anthropic-style messages -> Gemini `contents`. Maps tool_use ids to
+        function names so tool_result turns carry the right function_response name."""
+        id_to_name: dict[str, str] = {}
+        contents: list[dict] = []
+        for m in messages:
+            role = "model" if m["role"] == "assistant" else "user"
+            parts: list[dict] = []
+            content = m["content"]
+            if isinstance(content, str):
+                parts.append({"text": content})
+            else:
+                for b in content:
+                    t = b.get("type")
+                    if t == "text" and b.get("text"):
+                        parts.append({"text": b["text"]})
+                    elif t == "tool_use":
+                        id_to_name[b["id"]] = b["name"]
+                        parts.append({"function_call": {"name": b["name"], "args": b.get("input", {})}})
+                    elif t == "tool_result":
+                        name = id_to_name.get(b.get("tool_use_id"), "tool")
+                        parts.append({"function_response": {"name": name,
+                                     "response": {"result": b.get("content", "")}}})
+            if not parts:
+                parts.append({"text": ""})
+            contents.append({"role": role, "parts": parts})
+        return contents
+
+    @staticmethod
+    def _to_tools(tools: list[ToolSpec]) -> list[dict]:
+        return [{"function_declarations": [
+            {"name": t.name, "description": t.description, "parameters": t.input_schema} for t in tools]}]
+
+    def complete(self, *, system, messages, tools=None, max_tokens=4096, temperature=0.0) -> LLMResponse:
+        config: dict[str, Any] = {"system_instruction": system, "temperature": temperature,
+                                  "max_output_tokens": max_tokens}
+        if tools:
+            config["tools"] = self._to_tools(tools)
+        resp = self._client.models.generate_content(
+            model=self.model, contents=self._to_contents(messages), config=config)
+
+        text_parts, calls = [], []
+        cand = resp.candidates[0]
+        for i, part in enumerate(cand.content.parts or []):
+            fc = getattr(part, "function_call", None)
+            if fc:
+                calls.append(ToolCall(id=f"call_{i}", name=fc.name, input=dict(fc.args or {})))
+            elif getattr(part, "text", None):
+                text_parts.append(part.text)
+        stop = "tool_use" if calls else ("max_tokens" if "MAX_TOKENS" in str(cand.finish_reason) else "end")
+        um = getattr(resp, "usage_metadata", None)
+        usage = Usage(getattr(um, "prompt_token_count", 0) or 0, getattr(um, "candidates_token_count", 0) or 0)
+        return LLMResponse(text="".join(text_parts) or None, tool_calls=calls, stop_reason=stop, usage=usage)
+
+    def compact(self, text: str, hint: str, *, max_out: int = 400) -> str:
+        if len(text) <= max_out:
+            return text
+        resp = self._client.models.generate_content(
+            model=self.model, contents=[{"role": "user", "parts": [{"text": f"[{hint}]\n{text[:6000]}"}]}],
+            config={"system_instruction": "Summarize the scanner output to the essential security facts. Be terse.",
+                    "max_output_tokens": max_out // 3 + 64})
+        out = "".join(p.text for p in (resp.candidates[0].content.parts or []) if getattr(p, "text", None))
+        return out[:max_out]
+
+
 class MockLLMClient:
     """Scripted client for tests. `responder(step, messages) -> LLMResponse`."""
 
