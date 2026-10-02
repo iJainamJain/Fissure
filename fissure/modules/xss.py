@@ -34,33 +34,15 @@ def _payloads(marker: str) -> list[tuple[str, str, str]]:
 class XssScanner:
     module = "xss"
 
-    def __init__(self, session: Session, injectables: list[Injectable]) -> None:
+    def __init__(self, session: Session, injectables: list[Injectable], *, concurrency: int = 8) -> None:
         self.session = session
         self.injectables = injectables
+        self.concurrency = concurrency
 
     async def scan(self) -> ModuleResult:
-        findings: list[Finding] = []
-        errors: list[str] = []
-        tested = 0
-
-        for inj in self.injectables:
-            tested += 1
-            try:
-                finding = await self._test_one(inj)
-            except Exception as exc:
-                errors.append(f"{inj.method} {inj.url} [{inj.param}]: {exc.__class__.__name__}: {exc}")
-                continue
-            if finding:
-                findings.append(finding)
-
-        status = "success" if not errors else "partial"
-        summary = (
-            f"Reflected XSS detected in {len(findings)} of {tested} parameter(s)."
-            if findings
-            else f"No reflected XSS detected across {tested} parameter(s)."
-        )
-        return ModuleResult(module=self.module, status=status, summary=summary, findings=findings,
-                            data={"parameters_tested": tested}, errors=errors)
+        from ._runner import scan_injectables
+        return await scan_injectables(self.module, self.injectables, self._test_one,
+                                      self.concurrency, "Reflected XSS")
 
     async def _test_one(self, inj: Injectable) -> Finding | None:
         loc = f"{inj.method} {inj.url} (param: {inj.param})"

@@ -26,7 +26,7 @@ from pathlib import Path
 from wsgiref.simple_server import make_server
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from benchmark.vulnlab import app  # noqa: E402
+from benchmark.vulnlab import ThreadingWSGIServer, app  # noqa: E402
 from fissure.engine import Engine  # noqa: E402
 
 SCORED_CLASSES = {"sqli", "xss", "cmdi", "traversal", "ssti", "redirect", "discovery", "cors"}
@@ -36,7 +36,7 @@ _PARAM_RE = re.compile(r"\(param:\s*([^)]+)\)")
 
 
 def _start_server():
-    server = make_server("127.0.0.1", 0, app)
+    server = make_server("127.0.0.1", 0, app, server_class=ThreadingWSGIServer)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
 

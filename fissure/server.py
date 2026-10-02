@@ -111,10 +111,10 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not_found"})
 
     def do_POST(self):
+        body = self._body()  # always drain the request body first (avoids RST on early reply)
         if not self._authed():
             return self._json(401, {"error": "unauthorized"})
         parts = self.path.strip("/").split("/")
-        body = self._body()
 
         if parts == ["scan"]:
             url = body.get("url", "")

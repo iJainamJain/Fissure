@@ -19,34 +19,36 @@ EVIL_ORIGIN = "https://fissure-evil.example"
 class CorsScanner:
     module = "cors"
 
-    def __init__(self, session: Session, crawl: CrawlResult, *, max_urls: int = 15) -> None:
+    def __init__(self, session: Session, crawl: CrawlResult, *, max_urls: int = 15, concurrency: int = 8) -> None:
         self.session = session
         self.crawl = crawl
         self.max_urls = max_urls
+        self.concurrency = concurrency
 
     async def scan(self) -> ModuleResult:
+        from ..concurrency import map_bounded
         if not self.crawl.responses:
             return ModuleResult(module=self.module, status="unsupported",
                                 summary="No crawled URLs to test for CORS.")
         findings: list[Finding] = []
         errors: list[str] = []
-        seen: set[str] = set()
-        tested = 0
-
+        seen: list[str] = []
         for resp_meta in self.crawl.responses:
-            url = resp_meta.url
-            if url in seen:
-                continue
-            seen.add(url)
-            if tested >= self.max_urls:
-                break
-            tested += 1
+            if resp_meta.url not in seen:
+                seen.append(resp_meta.url)
+        urls = seen[:self.max_urls]
+        tested = len(urls)
+
+        async def _safe(url):
             try:
-                finding = await self._test_url(url)
+                return (await self._test_url(url), None)
             except Exception as exc:
-                errors.append(f"{url}: {exc.__class__.__name__}: {exc}")
-                continue
-            if finding:
+                return (None, f"{url}: {exc.__class__.__name__}: {exc}")
+
+        for finding, err in await map_bounded(urls, _safe, self.concurrency):
+            if err:
+                errors.append(err)
+            elif finding:
                 findings.append(finding)
 
         status = "success" if not errors else "partial"

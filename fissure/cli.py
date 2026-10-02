@@ -44,6 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--crawl-pages", type=int, default=25)
     p.add_argument("--crawl-depth", type=int, default=2)
     p.add_argument("--crawl-delay", type=float, default=0.0, help="Delay between crawl requests (seconds).")
+    p.add_argument("--concurrency", type=int, default=8,
+                   help="Max concurrent requests for non-timing modules (time-based stay sequential).")
     p.add_argument("--login-url", help="Form-login URL to authenticate before scanning.")
     p.add_argument("--login-data", action="append", default=[], metavar="FIELD=VALUE",
                    help="Login form field (repeatable), e.g. username=admin password=password.")
@@ -74,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
             crawl_pages=args.crawl_pages,
             crawl_depth=args.crawl_depth,
             crawl_delay=args.crawl_delay,
+            concurrency=args.concurrency,
             html=args.html,
             sarif=args.sarif,
             login=login,

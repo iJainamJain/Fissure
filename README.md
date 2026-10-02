@@ -103,6 +103,7 @@ python -m fissure http://localhost/dvwa/ --html \
 | `--cookie NAME=VALUE` | session cookie (repeatable) |
 | `--header NAME=VALUE` | extra request header (repeatable) |
 | `--crawl-pages / --crawl-depth / --crawl-delay` | bound and slow the crawl |
+| `--concurrency N` | max concurrent requests for non-timing modules (default 8; time-based stay sequential) |
 | `--allow-public` | permit a public target (**authorization required**) |
 | `-o path.json` | report output path |
 

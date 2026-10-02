@@ -37,6 +37,7 @@ class Engine:
         crawl_pages: int = 25,
         crawl_depth: int = 2,
         crawl_delay: float = 0.0,
+        concurrency: int = 8,
         html: bool = False,
         sarif: bool = False,
         login: dict | None = None,
@@ -51,6 +52,7 @@ class Engine:
         self.crawl_pages = crawl_pages
         self.crawl_depth = crawl_depth
         self.crawl_delay = crawl_delay
+        self.concurrency = max(1, concurrency)
         self.html = html
         self.sarif = sarif
         self.login = login  # {"url":..., "data":{...}, "success_text":...}
@@ -84,20 +86,24 @@ class Engine:
             self._emit("crawl_done", f"{len(crawl.pages)} pages, {len(injectables)} injectable inputs")
 
             # Passive first (no payloads), then the active injection modules.
-            for name, scanner in (("headers", HeaderScanner(crawl)), ("cors", CorsScanner(session, crawl))):
+            c = self.concurrency
+            for name, scanner in (("headers", HeaderScanner(crawl)),
+                                  ("cors", CorsScanner(session, crawl, concurrency=c))):
                 self._emit("module_start", name)
                 res = await self._timed(scanner.scan())
                 results.append(res)
                 self._emit("module_done", f"{name}:{len(res.findings)}")
 
+            # Time-based modules (sqli, cmdi) stay sequential (concurrency=1) so a
+            # queued sleep can't inflate another request's measured latency.
             scanners = [
                 ("sqli", SqliScanner(session, injectables)),
-                ("xss", XssScanner(session, injectables)),
+                ("xss", XssScanner(session, injectables, concurrency=c)),
                 ("cmdi", CmdiScanner(session, injectables)),
-                ("traversal", TraversalScanner(session, injectables)),
-                ("ssti", SstiScanner(session, injectables)),
-                ("redirect", RedirectScanner(session, injectables)),
-                ("discovery", DiscoveryScanner(session, self.target)),
+                ("traversal", TraversalScanner(session, injectables, concurrency=c)),
+                ("ssti", SstiScanner(session, injectables, concurrency=c)),
+                ("redirect", RedirectScanner(session, injectables, concurrency=c)),
+                ("discovery", DiscoveryScanner(session, self.target, concurrency=c)),
             ]
             for name, scanner in scanners:
                 # Self-heal a dropped login between modules so later modules

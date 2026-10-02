@@ -20,8 +20,14 @@ import re
 import secrets
 import time
 from http.cookies import SimpleCookie
+from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs, unquote
-from wsgiref.simple_server import make_server
+from wsgiref.simple_server import WSGIServer, make_server
+
+
+class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    """Multi-threaded WSGI server so concurrent scanner requests aren't serialized."""
+    daemon_threads = True
 
 # In-memory auth state for the login demo (/login, /secret).
 _ISSUED_TOKENS: set[str] = set()
@@ -178,6 +184,6 @@ def _session_id(environ) -> str:
 
 
 if __name__ == "__main__":
-    with make_server("127.0.0.1", 8000, app) as server:
+    with make_server("127.0.0.1", 8000, app, server_class=ThreadingWSGIServer) as server:
         print("VulnLab on http://127.0.0.1:8000  (Ctrl+C to stop)")
         server.serve_forever()

@@ -23,22 +23,27 @@ META_REFRESH_RE = re.compile(r'http-equiv=["\']?refresh["\']?[^>]*url=([^"\'>\s]
 class RedirectScanner:
     module = "redirect"
 
-    def __init__(self, session: Session, injectables: list[Injectable]) -> None:
+    def __init__(self, session: Session, injectables: list[Injectable], *, concurrency: int = 8) -> None:
         self.session = session
         self.injectables = injectables
+        self.concurrency = concurrency
 
     async def scan(self) -> ModuleResult:
+        from ..concurrency import map_bounded
         findings: list[Finding] = []
         errors: list[str] = []
         candidates = [inj for inj in self.injectables if inj.param.lower() in REDIRECT_PARAM_HINTS]
 
-        for inj in candidates:
+        async def _safe(inj):
             try:
-                finding = await self._test_one(inj)
+                return (await self._test_one(inj), None)
             except Exception as exc:
-                errors.append(f"{inj.method} {inj.url} [{inj.param}]: {exc.__class__.__name__}: {exc}")
-                continue
-            if finding:
+                return (None, f"{inj.method} {inj.url} [{inj.param}]: {exc.__class__.__name__}: {exc}")
+
+        for finding, err in await map_bounded(candidates, _safe, self.concurrency):
+            if err:
+                errors.append(err)
+            elif finding:
                 findings.append(finding)
 
         status = "success" if not errors else "partial"
