@@ -1,0 +1,11 @@
+.venv/
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+out/
+*.egg-info/
+.pytest_cache/
+fissure_report.json
+fissure_report.html

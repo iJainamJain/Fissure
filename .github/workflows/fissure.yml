@@ -1,0 +1,53 @@
+name: Fissure security scan
+
+# Runs Fissure's own test suite, then scans the bundled VulnLab target and
+# uploads the results to GitHub code scanning as SARIF. Demonstrates Fissure
+# as a DevSecOps gate: --fail-on high would break the build on a serious finding.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # required to upload SARIF to code scanning
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pytest pytest-asyncio
+      - run: pytest -q
+
+  scan:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - name: Start VulnLab target
+        run: |
+          python benchmark/vulnlab.py &
+          sleep 3
+
+      - name: Run Fissure
+        # Scope guard allows localhost by default; --sarif emits code-scanning output.
+        # Use "|| true" so an expected VulnLab finding doesn't fail this demo job;
+        # in a real pipeline drop it and let --fail-on gate the build.
+        run: |
+          python -m fissure http://127.0.0.1:8000 --sarif --fail-on critical -o out/report.json || true
+
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: out/report.sarif

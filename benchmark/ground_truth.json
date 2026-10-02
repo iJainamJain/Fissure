@@ -1,0 +1,13 @@
+{
+  "target": "VulnLab (benchmark/vulnlab.py)",
+  "description": "Known vulnerabilities seeded into VulnLab, used to score Fissure's precision/recall. Each entry is one true positive the scanner should find.",
+  "vulns": [
+    {"class": "sqli",      "path": "/search", "param": "q",    "note": "error-based SQLi"},
+    {"class": "xss",       "path": "/search", "param": "q",    "note": "reflected XSS"},
+    {"class": "sqli",      "path": "/item",   "param": "id",   "note": "error/boolean/time-based SQLi"},
+    {"class": "cmdi",      "path": "/ping",   "param": "host", "note": "OS command injection (time-based)"},
+    {"class": "traversal", "path": "/view",   "param": "file", "note": "path traversal / LFI"},
+    {"class": "redirect",  "path": "/go",     "param": "next", "note": "open redirect"},
+    {"class": "discovery", "path": "/.env",   "param": null,   "note": "sensitive file exposed"}
+  ]
+}

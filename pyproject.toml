@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fissure-scan"
+version = "0.1.0"
+description = "Active web-application vulnerability scanner for authorized lab use."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["httpx>=0.27"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+ai = ["anthropic>=0.40"]
+
+[project.scripts]
+fissure = "fissure.cli:main"
+fissure-ai = "fissure.ai.cli:main"
+
+[project.gui-scripts]
+fissure-gui = "fissure.gui:main"
+
+[tool.setuptools.packages.find]
+include = ["fissure*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
