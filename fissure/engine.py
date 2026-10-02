@@ -12,10 +12,12 @@ from .crawler import Crawler
 from .html_report import generate_html_report
 from .http import Session
 from .modules.cmdi import CmdiScanner
+from .modules.cors import CorsScanner
 from .modules.discovery import DiscoveryScanner
 from .modules.headers import HeaderScanner
 from .modules.redirect import RedirectScanner
 from .modules.sqli import SqliScanner
+from .modules.ssti import SstiScanner
 from .modules.traversal import TraversalScanner
 from .modules.xss import XssScanner
 from .reporting import ModuleResult, risk_label
@@ -82,16 +84,18 @@ class Engine:
             self._emit("crawl_done", f"{len(crawl.pages)} pages, {len(injectables)} injectable inputs")
 
             # Passive first (no payloads), then the active injection modules.
-            self._emit("module_start", "headers")
-            headers_result = await self._timed(HeaderScanner(crawl).scan())
-            results.append(headers_result)
-            self._emit("module_done", f"headers:{len(headers_result.findings)}")
+            for name, scanner in (("headers", HeaderScanner(crawl)), ("cors", CorsScanner(session, crawl))):
+                self._emit("module_start", name)
+                res = await self._timed(scanner.scan())
+                results.append(res)
+                self._emit("module_done", f"{name}:{len(res.findings)}")
 
             scanners = [
                 ("sqli", SqliScanner(session, injectables)),
                 ("xss", XssScanner(session, injectables)),
                 ("cmdi", CmdiScanner(session, injectables)),
                 ("traversal", TraversalScanner(session, injectables)),
+                ("ssti", SstiScanner(session, injectables)),
                 ("redirect", RedirectScanner(session, injectables)),
                 ("discovery", DiscoveryScanner(session, self.target)),
             ]

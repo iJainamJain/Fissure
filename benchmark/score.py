@@ -29,7 +29,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from benchmark.vulnlab import app  # noqa: E402
 from fissure.engine import Engine  # noqa: E402
 
-SCORED_CLASSES = {"sqli", "xss", "cmdi", "traversal", "redirect", "discovery"}
+SCORED_CLASSES = {"sqli", "xss", "cmdi", "traversal", "ssti", "redirect", "discovery", "cors"}
+PATH_KEYED = {"discovery", "cors"}  # keyed by URL path, not by a parameter
 GT_PATH = Path(__file__).with_name("ground_truth.json")
 _PARAM_RE = re.compile(r"\(param:\s*([^)]+)\)")
 
@@ -52,8 +53,7 @@ def _detected_keys(report: dict) -> set[tuple[str, str | None]]:
         if module not in SCORED_CLASSES:
             continue
         for f in data["findings"]:
-            if module == "discovery":
-                # key discovery findings by the exposed path's basename
+            if module in PATH_KEYED:
                 keys.add((module, _path_tail(f["location"])))
             else:
                 keys.add((module, _param_of(f["location"])))
@@ -65,7 +65,7 @@ def _path_tail(url: str) -> str:
 
 
 def _gt_key(entry: dict) -> tuple[str, str | None]:
-    if entry["class"] == "discovery":
+    if entry["class"] in PATH_KEYED:
         return (entry["class"], entry["path"])  # e.g. ("discovery", "/.env")
     return (entry["class"], entry["param"])
 

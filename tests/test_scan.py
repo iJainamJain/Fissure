@@ -5,8 +5,10 @@ from __future__ import annotations
 from fissure.crawler import Crawler, Injectable
 from fissure.http import Session
 from fissure.modules.cmdi import CmdiScanner
+from fissure.modules.cors import CorsScanner
 from fissure.modules.discovery import DiscoveryScanner
 from fissure.modules.headers import HeaderScanner
+from fissure.modules.ssti import SstiScanner
 from fissure.modules.traversal import TraversalScanner
 from fissure.modules.redirect import RedirectScanner
 from fissure.modules.sqli import SqliScanner
@@ -73,6 +75,26 @@ async def test_no_traversal_on_safe_param(vulnlab_url):
     async with Session() as s:
         res = await TraversalScanner(s, [_inj(f"{vulnlab_url}/search", "q")]).scan()
     assert not res.findings
+
+
+async def test_ssti(vulnlab_url):
+    async with Session() as s:
+        res = await SstiScanner(s, [_inj(f"{vulnlab_url}/render", "name")]).scan()
+    assert res.findings and res.findings[0].cwe == "CWE-1336"
+
+
+async def test_no_ssti_on_reflecting_param(vulnlab_url):
+    # /search reflects input but does not evaluate templates -> no SSTI.
+    async with Session() as s:
+        res = await SstiScanner(s, [_inj(f"{vulnlab_url}/search", "q")]).scan()
+    assert not res.findings
+
+
+async def test_cors_misconfig(vulnlab_url):
+    async with Session() as s:
+        crawl = await Crawler(normalize_target(vulnlab_url), s, max_pages=10, max_depth=1).crawl()
+        res = await CorsScanner(s, crawl).scan()
+    assert any(f.cwe == "CWE-942" and f.severity == "high" for f in res.findings)
 
 
 async def test_open_redirect(vulnlab_url):

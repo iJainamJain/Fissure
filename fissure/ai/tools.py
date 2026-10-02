@@ -12,10 +12,12 @@ from typing import Any
 from ..crawler import Crawler, CrawlResult, Injectable
 from ..http import Session
 from ..modules.cmdi import CmdiScanner
+from ..modules.cors import CorsScanner
 from ..modules.discovery import DiscoveryScanner
 from ..modules.headers import HeaderScanner
 from ..modules.redirect import RedirectScanner
 from ..modules.sqli import SqliScanner
+from ..modules.ssti import SstiScanner
 from ..modules.traversal import TraversalScanner
 from ..modules.xss import XssScanner
 from ..reporting import ModuleResult
@@ -65,10 +67,13 @@ class ToolRegistry:
             ToolSpec("run_xss", "Test one injectable for reflected XSS.", inj),
             ToolSpec("run_cmdi", "Test one injectable for OS command injection.", inj),
             ToolSpec("run_traversal", "Test one injectable for path traversal / LFI.", inj),
+            ToolSpec("run_ssti", "Test one injectable for server-side template injection.", inj),
             ToolSpec("run_redirect", "Test one injectable for open redirect.", inj),
             ToolSpec("run_discovery", "Probe the site root for sensitive/default files.",
                      {"type": "object", "properties": {}}),
             ToolSpec("run_headers", "Passively audit security headers and cookie flags.",
+                     {"type": "object", "properties": {}}),
+            ToolSpec("run_cors", "Test crawled URLs for CORS misconfiguration.",
                      {"type": "object", "properties": {}}),
             ToolSpec("http_request", "Send one HTTP request (guarded). GET read-only probes only unless approved.",
                      {"type": "object", "properties": {
@@ -130,7 +135,16 @@ class ToolRegistry:
     async def _t_run_xss(self, args): return await self._run_module(XssScanner, args)
     async def _t_run_cmdi(self, args): return await self._run_module(CmdiScanner, args)
     async def _t_run_traversal(self, args): return await self._run_module(TraversalScanner, args)
+    async def _t_run_ssti(self, args): return await self._run_module(SstiScanner, args)
     async def _t_run_redirect(self, args): return await self._run_module(RedirectScanner, args)
+
+    async def _t_run_cors(self, args) -> dict:
+        if self.crawl_result is None:
+            return {"ok": False, "error": "no_crawl", "detail": "crawl first"}
+        result = await CorsScanner(self.session, self.crawl_result).scan()
+        ids = self.store.add_result(result)
+        return {"ok": True, "data": {"module": "cors", "summary": result.summary,
+                "findings": [{"id": fid, **_finding_brief(f)} for fid, f in zip(ids, result.findings)]}}
 
     async def _t_run_discovery(self, args) -> dict:
         result = await DiscoveryScanner(self.session, self.target).scan()

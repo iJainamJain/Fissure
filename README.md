@@ -15,6 +15,8 @@ parameters and form inputs, and fires crafted payloads at each one to confirm:
 | `xss` | Reflected cross-site scripting | unescaped reflection across HTML / attribute / script contexts | CWE-79 |
 | `cmdi` | OS command injection | time-based blind (`sleep`/`ping`, non-destructive) | CWE-78 |
 | `traversal` | Path traversal / LFI | `../` + encodings; matches file-content signature, not echoed payload | CWE-22 |
+| `ssti` | Server-side template injection | `{{a*b}}` / `${}` / `<%= %>` evaluated, bound to a unique marker | CWE-1336 |
+| `cors` | CORS misconfiguration | reflected `Origin` + `Access-Control-Allow-Credentials` | CWE-942 |
 | `redirect` | Open redirect | `Location` header + `<meta refresh>` on navigation params | CWE-601 |
 | `discovery` | Default files / directory listing | sensitive-path wordlist + autoindex detection | CWE-538/548 |
 | `headers` | Security-header & cookie misconfig (passive, OWASP A05) | missing CSP/HSTS/XFO… + HttpOnly/Secure/SameSite | CWE-693… |
@@ -162,7 +164,7 @@ pytest -q          # 31 tests: scope/auth logic, each module vs live VulnLab, SA
 python benchmark/score.py
 ```
 
-Current result on VulnLab: **precision 1.000 · recall 1.000 · F1 1.000** (7/7, 0 FP).
+Current result on VulnLab: **precision 1.000 · recall 1.000 · F1 1.000** (9/9, 0 FP).
 See [`benchmark/README.md`](benchmark/README.md) for the DVWA scorecard and the
 OWASP ZAP / Nikto comparison methodology.
 

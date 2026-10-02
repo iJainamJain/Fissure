@@ -80,7 +80,12 @@ class Agent:
                     out = await tools.dispatch(call.name, call.input)
                     if out.pop("done", False):
                         done = True
-                    content = self.hive.compact(json.dumps(out), call.name)
+                    content = json.dumps(out)
+                    # Tool envelopes are already bounded (handles, field caps). Only ask a
+                    # worker model to compress when one is configured and output is large;
+                    # never truncate structured JSON blindly (it would corrupt it).
+                    if self.hive.worker is not None and len(content) > 2000:
+                        content = self.hive.compact(content, call.name, max_out=1500)
                     tool_results.append({"type": "tool_result", "tool_use_id": call.id, "content": content})
                 messages.append({"role": "user", "content": tool_results})
                 if done:

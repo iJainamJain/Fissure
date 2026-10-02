@@ -7,7 +7,9 @@
     {"class": "sqli",      "path": "/item",   "param": "id",   "note": "error/boolean/time-based SQLi"},
     {"class": "cmdi",      "path": "/ping",   "param": "host", "note": "OS command injection (time-based)"},
     {"class": "traversal", "path": "/view",   "param": "file", "note": "path traversal / LFI"},
+    {"class": "ssti",      "path": "/render", "param": "name", "note": "server-side template injection"},
     {"class": "redirect",  "path": "/go",     "param": "next", "note": "open redirect"},
-    {"class": "discovery", "path": "/.env",   "param": null,   "note": "sensitive file exposed"}
+    {"class": "discovery", "path": "/.env",   "param": null,   "note": "sensitive file exposed"},
+    {"class": "cors",      "path": "/api",    "param": null,   "note": "CORS reflects origin with credentials"}
   ]
 }

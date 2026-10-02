@@ -78,6 +78,8 @@ def detection_table():
         ("Command Injection", "Time-based blind (sleep/ping)", "Response delayed ~6s by injected shell command"),
         ("Reflected XSS", "Markers in HTML / attribute / script", "Payload reflected unescaped in the response"),
         ("Path Traversal / LFI", "../ sequences + encodings", "Response contains /etc/passwd or win.ini contents"),
+        ("Template Injection (SSTI)", "{{a*b}} / ${} / &lt;%=%&gt; marker probe", "Engine evaluates the arithmetic expression"),
+        ("CORS misconfiguration", "Reflected Origin probe", "ACAO echoes attacker origin with credentials"),
         ("Open Redirect", "External canary on nav params", "3xx Location or meta-refresh points off-site"),
         ("Default / sensitive files", "Path wordlist + autoindex check", "HTTP 200 on sensitive path · 'Index of /'"),
         ("Security headers / cookies", "Passive headers &amp; Set-Cookie flags", "Missing CSP/HSTS/XFO · HttpOnly/Secure/SameSite"),
@@ -151,7 +153,7 @@ def why_cols():
         "<b>Confirms, not just flags</b> — it injects and observes real behaviour (DB error, 5s delay, unescaped reflection), so a finding means <i>exploitable</i>, not merely “looks odd.”",
         "<b>Right-sized &amp; transparent</b> — one small, readable Python codebase vs. heavyweight Java/commercial suites; every check is auditable, not a black box.",
         "<b>Safe-by-default</b> — refuses public targets without explicit authorization; payloads are non-destructive (sleep/ping, never <tt>rm</tt>).",
-        "<b>Zero-friction demo</b> — a single <b>Windows .exe</b> (no Python needed) plus a bundled vulnerable target; 25 automated tests; verified live against DVWA.",
+        "<b>Zero-friction demo</b> — a single <b>Windows .exe</b> (no Python needed) plus a bundled vulnerable target; 38 automated tests; verified live against DVWA.",
         "<b>Honest severity</b> — context-aware CLEAN&#8594;CRITICAL score with CWE ids; correctly reports <i>nothing</i> when a target is properly fixed.",
         "<b>Built to grow</b> — a clean module/engine/report contract that becomes the toolbelt for <b>Fissure AI</b> (Step 2, a Claude agent that drives it).",
     ]
@@ -204,7 +206,7 @@ def build():
         "One scan pipeline: check the target is in scope &#8594; crawl from the URL to harvest injectable inputs "
         "&#8594; fire active payloads at each input &#8594; passively audit headers &#8594; probe for sensitive files "
         "&#8594; score and render JSON + HTML + SARIF. Modules: <b>crawler, sqli, cmdi, xss, traversal, "
-        "redirect, discovery, headers</b>.", styles["body"]))
+        "ssti, cors, redirect, discovery, headers</b>.", styles["body"]))
     S.append(Spacer(1, 7))
 
     # Detection capabilities
@@ -227,7 +229,7 @@ def build():
            "<b>time-based blind SQLi</b> (5-second delay) and <b>reflected XSS</b> at low/medium security. Crucially, on "
            "<b>high-security SQLi</b> \u2014 where DVWA uses a parameterized query \u2014 it correctly reports <b>nothing</b>, "
            "demonstrating that it confirms true exploitability rather than pattern-matching. Benchmarked on a "
-           "controlled target: <b>precision / recall / F1 = 1.00</b> (7/7, 0 false positives). 25 automated tests pass.")
+           "controlled target: <b>precision / recall / F1 = 1.00</b> (9/9, 0 false positives). 38 automated tests pass.")
     S.append(box([Paragraph(val, styles["body"])], bg=colors.HexColor("#eaf5ec")))
     S.append(Spacer(1, 6))
 

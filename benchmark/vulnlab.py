@@ -33,7 +33,9 @@ HOME = (
     '<a href="/item?id=1">item</a> '
     '<a href="/go?next=/home">go</a> '
     '<a href="/ping?host=127.0.0.1">ping</a> '
-    '<a href="/view?file=readme.txt">view</a>'
+    '<a href="/view?file=readme.txt">view</a> '
+    '<a href="/render?name=guest">render</a> '
+    '<a href="/api">api</a>'
     "</body></html>"
 )
 
@@ -104,6 +106,25 @@ def app(environ, start_response):
         if "win.ini" in decoded:
             return _text(start_response, "[fonts]\n[extensions]\n; for 16-bit app support\n")
         return _text(start_response, f"<pre>contents of {html.escape(fname)}</pre>")
+
+    if path == "/render":
+        name = qs.get("name", [""])[0]
+        # Simulated template engine: evaluate arithmetic inside {{ }} or { } delimiters.
+        # Output is HTML-escaped first, so this models SSTI without also being XSS.
+        rendered = html.escape(name)
+        rendered = re.sub(r"\{\{\s*(\d+)\s*\*\s*(\d+)\s*\}\}",
+                          lambda m: str(int(m.group(1)) * int(m.group(2))), rendered)
+        rendered = re.sub(r"\{\s*(\d+)\s*\*\s*(\d+)\s*\}",
+                          lambda m: str(int(m.group(1)) * int(m.group(2))), rendered)
+        return _text(start_response, f"<p>Hello {rendered}</p>")
+
+    if path == "/api":
+        # Simulated vulnerable CORS: reflects the request Origin and allows credentials.
+        origin = environ.get("HTTP_ORIGIN", "")
+        return _text(start_response, '{"ok": true}', status="200 OK", extra_headers=[
+            ("Access-Control-Allow-Origin", origin or "*"),
+            ("Access-Control-Allow-Credentials", "true"),
+        ])
 
     if path == "/.env":
         return _text(start_response, "DB_PASSWORD=supersecret\nAPI_KEY=abc123")
