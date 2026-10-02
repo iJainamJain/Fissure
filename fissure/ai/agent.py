@@ -15,7 +15,7 @@ from ..http import Session
 from ..targets import ScopeError, Target, normalize_target, validate_scope
 from .gate import Gate
 from .hive import Hive
-from .memory import FindingsStore
+from .memory import EngagementMemory, FindingsStore
 from .prompts import INITIAL_TASK, NUDGE, SYSTEM_PROMPT
 from .tools import ToolRegistry
 
@@ -24,8 +24,8 @@ class Agent:
     def __init__(self, target_input: str, hive: Hive, *, allow_public: bool = False,
                  output: str = "fissure_ai_report.json", cookies: dict | None = None,
                  approval_cb: Callable[[dict], bool] | None = None, html: bool = True,
-                 sarif: bool = False, timeout: float = 15.0,
-                 progress: Callable[[str, str], None] | None = None) -> None:
+                 sarif: bool = False, timeout: float = 15.0, workdir: str = ".fissure",
+                 resume: bool = False, progress: Callable[[str, str], None] | None = None) -> None:
         self.target: Target = normalize_target(target_input)
         validate_scope(self.target, allow_public=allow_public)
         self.hive = hive
@@ -35,6 +35,8 @@ class Agent:
         self.html = html
         self.sarif = sarif
         self.timeout = timeout
+        self.workdir = workdir
+        self.resume = resume
         self.progress = progress
 
     def _emit(self, stage: str, detail: str = "") -> None:
@@ -43,9 +45,13 @@ class Agent:
 
     async def run(self) -> dict[str, Any]:
         store = FindingsStore()
+        memory = EngagementMemory(self.workdir, self.target.base_url, scope=self.target.scope)
+        if self.resume:
+            memory.load()
+            store.load(memory.dir)
         async with Session(timeout=self.timeout, cookies=self.cookies) as session:
             tools = ToolRegistry(session, self.target, self.gate, store, self.output,
-                                 html=self.html, sarif=self.sarif)
+                                 html=self.html, sarif=self.sarif, memory=memory)
             specs = tools.specs()
             messages: list[dict] = [{"role": "user", "content": INITIAL_TASK.format(
                 base_url=self.target.base_url, scope=self.target.scope)}]
@@ -88,6 +94,8 @@ class Agent:
                         content = self.hive.compact(content, call.name, max_out=1500)
                     tool_results.append({"type": "tool_result", "tool_use_id": call.id, "content": content})
                 messages.append({"role": "user", "content": tool_results})
+                memory.save(extra={"findings": store.count()})  # persist progress each batch
+                store.save(memory.dir)
                 if done:
                     break
 

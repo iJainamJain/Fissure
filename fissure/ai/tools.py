@@ -40,7 +40,7 @@ def _finding_brief(f) -> dict[str, Any]:
 
 class ToolRegistry:
     def __init__(self, session: Session, target: Target, gate: Gate, store: FindingsStore,
-                 output: str, *, html: bool = True, sarif: bool = False) -> None:
+                 output: str, *, html: bool = True, sarif: bool = False, memory=None) -> None:
         self.session = session
         self.target = target
         self.gate = gate
@@ -48,6 +48,7 @@ class ToolRegistry:
         self.output = output
         self.html = html
         self.sarif = sarif
+        self.memory = memory  # EngagementMemory | None — enables idempotent skip + resume
         self.injectables: dict[str, Injectable] = {}
         self.crawl_result: CrawlResult | None = None
         self.report_paths: dict | None = None
@@ -126,8 +127,14 @@ class ToolRegistry:
         inj = self._resolve(args)
         if inj is None:
             return {"ok": False, "error": "no_injectable", "detail": "crawl first or pass a valid injectable_id/param"}
+        sig = f"{scanner_cls.module}:{inj.method} {inj.url} [{inj.param}]"
+        if self.memory and self.memory.is_tested(sig):
+            return {"ok": True, "data": {"module": scanner_cls.module,
+                    "note": "already tested this engagement; skipped", "findings": []}}
         result = await scanner_cls(self.session, [inj]).scan()
         ids = self.store.add_result(result)
+        if self.memory:
+            self.memory.mark(sig)
         return {"ok": True, "data": {"module": result.module, "summary": result.summary,
                 "findings": [{"id": fid, **_finding_brief(f)} for fid, f in zip(ids, result.findings)]}}
 

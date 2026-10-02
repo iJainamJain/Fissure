@@ -9,3 +9,5 @@ out/
 .pytest_cache/
 fissure_report.json
 fissure_report.html
+.fissure/
+fissure_ai_report.*

@@ -100,7 +100,9 @@ from CAI (restrictive + archived), or from any repo whose LICENSE you haven't re
 1. ✅ Land Track 1 items 1–7.
 2. ✅ `LLMClient`/`Hive` + tool registry + orchestrator loop (tool-use ReAct), text-state only — `fissure/ai/`.
 3. ✅ Guardrail layer (scope, denylist, state-change approval) + findings store; `fissure-ai` CLI. Offline-tested with a scripted mock model (31 tests total).
-4. ⬜ Next: real `AnthropicClient` run against DVWA (needs API key), engagement-context memory persistence, worker-model routing, the localhost server + browser extension, vision-on-demand.
+4. ✅ Localhost server (`fissure/server.py`) + MV3 browser extension (`extension/`), authorization-gated.
+5. ✅ Engagement-memory persistence + resume (`EngagementMemory`, `FindingsStore.save/load`; `--resume`) — idempotent skip of tested inputs.
+6. ⬜ Next (needs API key or polish): real `AnthropicClient` run against DVWA, worker-model routing for bulk triage/report prose, vision-on-demand, extension icon + AI mode.
 
 ### Model routing — Claude brain + cheap workers (idea: "hive")
 Legitimate cost-control pattern, but be precise about where tokens actually go. The

@@ -46,6 +46,8 @@ def main(argv=None) -> int:
     p.add_argument("--brain-model", default="claude-opus-5-5")
     p.add_argument("--worker-model", default=None, help="Optional cheap worker (e.g. claude-haiku-4-5-20251001).")
     p.add_argument("--max-steps", type=int, default=40)
+    p.add_argument("--workdir", default=".fissure", help="Where engagement state is persisted.")
+    p.add_argument("--resume", action="store_true", help="Resume a prior engagement for this target (skip tested inputs).")
     p.add_argument("--sarif", action="store_true")
     p.add_argument("--no-html", action="store_true")
     args = p.parse_args(argv)
@@ -63,6 +65,7 @@ def main(argv=None) -> int:
         agent = Agent(args.target, hive, allow_public=args.allow_public, output=args.output,
                       cookies=_cookies(args.cookie), approval_cb=_approval,
                       html=not args.no_html, sarif=args.sarif,
+                      workdir=args.workdir, resume=args.resume,
                       progress=lambda stage, detail: sys.stderr.write(f"  · {stage}: {detail}\n"))
     except ScopeError as exc:
         sys.stderr.write(f"Scope refused: {exc}\n"); return 2
