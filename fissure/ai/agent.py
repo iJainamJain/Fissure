@@ -68,8 +68,10 @@ class Agent:
                 if resp.text:
                     assistant_blocks.append({"type": "text", "text": resp.text})
                 for call in resp.tool_calls:
-                    assistant_blocks.append({"type": "tool_use", "id": call.id,
-                                             "name": call.name, "input": call.input})
+                    block = {"type": "tool_use", "id": call.id, "name": call.name, "input": call.input}
+                    if getattr(call, "signature", None) is not None:
+                        block["signature"] = call.signature  # preserve Gemini 3.x thought_signature
+                    assistant_blocks.append(block)
                 messages.append({"role": "assistant", "content": assistant_blocks or [{"type": "text", "text": ""}]})
 
                 if resp.stop_reason != "tool_use" or not resp.tool_calls:

@@ -28,6 +28,7 @@ class ToolCall:
     id: str
     name: str
     input: dict[str, Any]
+    signature: Any = None  # Gemini 3.x thought_signature, round-tripped in history
 
 
 @dataclass
@@ -165,7 +166,10 @@ class GeminiClient:
                         parts.append({"text": b["text"]})
                     elif t == "tool_use":
                         id_to_name[b["id"]] = b["name"]
-                        parts.append({"function_call": {"name": b["name"], "args": b.get("input", {})}})
+                        part = {"function_call": {"name": b["name"], "args": b.get("input", {})}}
+                        if b.get("signature") is not None:
+                            part["thought_signature"] = b["signature"]  # Gemini 3.x requirement
+                        parts.append(part)
                     elif t == "tool_result":
                         name = id_to_name.get(b.get("tool_use_id"), "tool")
                         parts.append({"function_response": {"name": name,
@@ -192,7 +196,8 @@ class GeminiClient:
         for i, part in enumerate(cand.content.parts or []):
             fc = getattr(part, "function_call", None)
             if fc:
-                calls.append(ToolCall(id=f"call_{i}", name=fc.name, input=dict(fc.args or {})))
+                calls.append(ToolCall(id=f"call_{i}", name=fc.name, input=dict(fc.args or {}),
+                                      signature=getattr(part, "thought_signature", None)))
             elif getattr(part, "text", None):
                 text_parts.append(part.text)
         stop = "tool_use" if calls else ("max_tokens" if "MAX_TOKENS" in str(cand.finish_reason) else "end")
