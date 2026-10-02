@@ -22,7 +22,7 @@ BANNER = ("Fissure AI drives active attack payloads via an LLM agent. Authorized
 # provider -> (client class, default model, env var)
 PROVIDERS = {
     "anthropic": (AnthropicClient, "claude-opus-5-5", "ANTHROPIC_API_KEY"),
-    "gemini": (GeminiClient, "gemini-2.5-flash", "GEMINI_API_KEY"),
+    "gemini": (GeminiClient, "gemini-3.5-flash", "GEMINI_API_KEY"),
 }
 
 

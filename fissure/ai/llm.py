@@ -8,6 +8,7 @@ verified without any API call.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol, runtime_checkable
 
@@ -128,6 +129,23 @@ class GeminiClient:
             self.__client = genai.Client(api_key=self._api_key)
         return self.__client
 
+    def _generate(self, **kwargs):
+        """Call Gemini with backoff on transient 503/429 (capacity/rate limits)."""
+        delay = 5
+        last = None
+        for attempt in range(5):
+            try:
+                return self._client.models.generate_content(**kwargs)
+            except Exception as exc:  # google.genai errors expose .code / message
+                msg = str(exc)
+                transient = any(s in msg for s in ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "high demand"))
+                last = exc
+                if not transient or attempt == 4:
+                    raise
+                time.sleep(delay)
+                delay = min(delay * 2, 40)
+        raise last  # pragma: no cover
+
     @staticmethod
     def _to_contents(messages: list[dict]) -> list[dict]:
         """Anthropic-style messages -> Gemini `contents`. Maps tool_use ids to
@@ -167,8 +185,7 @@ class GeminiClient:
                                   "max_output_tokens": max_tokens}
         if tools:
             config["tools"] = self._to_tools(tools)
-        resp = self._client.models.generate_content(
-            model=self.model, contents=self._to_contents(messages), config=config)
+        resp = self._generate(model=self.model, contents=self._to_contents(messages), config=config)
 
         text_parts, calls = [], []
         cand = resp.candidates[0]
@@ -186,7 +203,7 @@ class GeminiClient:
     def compact(self, text: str, hint: str, *, max_out: int = 400) -> str:
         if len(text) <= max_out:
             return text
-        resp = self._client.models.generate_content(
+        resp = self._generate(
             model=self.model, contents=[{"role": "user", "parts": [{"text": f"[{hint}]\n{text[:6000]}"}]}],
             config={"system_instruction": "Summarize the scanner output to the essential security facts. Be terse.",
                     "max_output_tokens": max_out // 3 + 64})
