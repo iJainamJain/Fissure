@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Fissure",
+  "version": "0.1.0",
+  "description": "Scan the current page for web vulnerabilities with your local Fissure service (authorized use only).",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "action": {
+    "default_title": "Fissure — scan this page",
+    "default_popup": "popup.html"
+  },
+  "icons": {}
+}

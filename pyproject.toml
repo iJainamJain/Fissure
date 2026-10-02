@@ -18,6 +18,7 @@ ai = ["anthropic>=0.40"]
 [project.scripts]
 fissure = "fissure.cli:main"
 fissure-ai = "fissure.ai.cli:main"
+fissure-server = "fissure.server:serve"
 
 [project.gui-scripts]
 fissure-gui = "fissure.gui:main"
