@@ -147,16 +147,30 @@ class FissureGUI:
 
     # ================================================================= settings
     def _init_settings_vars(self) -> None:
-        """Session-only configuration shared across sections (never persisted)."""
-        self.gemini_key = tk.StringVar(value=os.environ.get("GEMINI_API_KEY", ""))
-        self.anthropic_key = tk.StringVar(value=os.environ.get("ANTHROPIC_API_KEY", ""))
-        self.default_provider = tk.StringVar(value="Gemini")
-        self.default_gemini_model = tk.StringVar(value=PROVIDERS["Gemini"][1])
-        self.default_anthropic_model = tk.StringVar(value=PROVIDERS["Anthropic"][1])
-        self.default_depth = tk.IntVar(value=1)
-        self.default_timeout = tk.DoubleVar(value=10.0)
-        self.default_concurrency = tk.IntVar(value=8)
-        self.appearance = tk.StringVar(value="Dark")
+        """Shared configuration; prefilled from the optional on-device config file
+        (falling back to environment variables), then applied to this process."""
+        from . import config as cfg
+        saved = cfg.load_config()
+
+        def pick(key, env, default=""):
+            return saved.get(key) or os.environ.get(env, "") or default
+
+        self.gemini_key = tk.StringVar(value=pick("gemini_api_key", "GEMINI_API_KEY"))
+        self.anthropic_key = tk.StringVar(value=pick("anthropic_api_key", "ANTHROPIC_API_KEY"))
+        self.remember_keys = tk.BooleanVar(value=bool(saved.get("remember_keys", False)))
+        # Make any saved keys active immediately for this process.
+        if self.gemini_key.get():
+            os.environ.setdefault("GEMINI_API_KEY", self.gemini_key.get())
+        if self.anthropic_key.get():
+            os.environ.setdefault("ANTHROPIC_API_KEY", self.anthropic_key.get())
+
+        self.default_provider = tk.StringVar(value=saved.get("default_provider", "Gemini"))
+        self.default_gemini_model = tk.StringVar(value=saved.get("default_gemini_model", PROVIDERS["Gemini"][1]))
+        self.default_anthropic_model = tk.StringVar(value=saved.get("default_anthropic_model", PROVIDERS["Anthropic"][1]))
+        self.default_depth = tk.IntVar(value=int(saved.get("default_depth", 1)))
+        self.default_timeout = tk.DoubleVar(value=float(saved.get("default_timeout", 10.0)))
+        self.default_concurrency = tk.IntVar(value=int(saved.get("default_concurrency", 8)))
+        self.appearance = tk.StringVar(value=saved.get("appearance", "Dark"))
 
     def _api_key_for(self, provider_label: str) -> str:
         var = self.gemini_key if provider_label == "Gemini" else self.anthropic_key
@@ -488,7 +502,7 @@ class FissureGUI:
     def _build_settings_section(self, tab) -> None:
         tab.grid_columnconfigure(0, weight=1)
 
-        _, kbody = self._card(tab, "API keys (kept in memory for this session only)",
+        _, kbody = self._card(tab, "API keys",
                              row=0, column=0, padx=CARD_PAD, pady=(CARD_PAD, 8), sticky="ew")
 
         r1 = ctk.CTkFrame(kbody, fg_color="transparent"); r1.grid(row=0, column=0, sticky="ew", pady=4)
@@ -506,10 +520,14 @@ class FissureGUI:
                       command=lambda: self._test_key("Anthropic")).grid(row=0, column=2)
 
         r3 = ctk.CTkFrame(kbody, fg_color="transparent"); r3.grid(row=2, column=0, sticky="ew", pady=4)
-        ctk.CTkButton(r3, text="Apply keys to this session", command=self._apply_keys,
+        ctk.CTkCheckBox(r3, text="Remember on this device", variable=self.remember_keys).pack(side="left", padx=(0, 16))
+        ctk.CTkButton(r3, text="Save keys", command=self._apply_keys,
                       fg_color=ACCENT, hover_color=ACCENT_HOVER).pack(side="left")
-        ctk.CTkLabel(r3, text="  (also pushed into os.environ; never written to disk)",
-                     text_color=("#6b7280", "#8b98a5")).pack(side="left")
+        ctk.CTkButton(r3, text="Forget saved keys", width=130, command=self._forget_keys).pack(side="left", padx=8)
+        r4 = ctk.CTkFrame(kbody, fg_color="transparent"); r4.grid(row=3, column=0, sticky="ew", pady=(2, 2))
+        ctk.CTkLabel(r4, text="Checked: saved to ~/.fissure/config.json (local, plaintext, this OS user). "
+                             "Unchecked: this session only.",
+                     text_color=("#6b7280", "#8b98a5"), wraplength=720, justify="left").pack(side="left")
 
         _, dbody = self._card(tab, "Defaults (seed the Scan and AI tabs when applied)",
                              row=1, column=0, padx=CARD_PAD, pady=8, sticky="ew")
@@ -543,9 +561,10 @@ class FissureGUI:
 
         note = ctk.CTkLabel(
             tab, text_color=("#555", "#9aa3b2"), wraplength=760, justify="left", anchor="w",
-            text=("Keys are held only for this session. 'Apply keys' pushes them into this "
-                  "process's environment so the LLM clients and any subprocess can read them; "
-                  "nothing is written to disk. Gemini free tier works with "
+            text=("'Save keys' pushes keys into this process's environment so the LLM clients "
+                  "can read them. With 'Remember on this device' ticked they are also written to "
+                  "~/.fissure/config.json (local plaintext, your OS user only) and auto-loaded next "
+                  "launch; use 'Forget saved keys' to remove them. Gemini free tier works with "
                   "gemini-3.5-flash-lite (gemini-3.5-flash refuses this task)."))
         note.grid(row=3, column=0, sticky="ew", padx=CARD_PAD + 2, pady=(8, CARD_PAD))
 
@@ -853,14 +872,54 @@ class FissureGUI:
             self.status_var.set("Token copied to clipboard")
 
     # ========================================================== settings actions
+    def _settings_snapshot(self, *, include_keys: bool) -> dict:
+        data = {
+            "default_provider": self.default_provider.get(),
+            "default_gemini_model": self.default_gemini_model.get(),
+            "default_anthropic_model": self.default_anthropic_model.get(),
+            "default_depth": self.default_depth.get(),
+            "default_timeout": self.default_timeout.get(),
+            "default_concurrency": self.default_concurrency.get(),
+            "appearance": self.appearance.get(),
+            "remember_keys": bool(self.remember_keys.get()),
+        }
+        if include_keys:
+            data["gemini_api_key"] = self.gemini_key.get().strip()
+            data["anthropic_api_key"] = self.anthropic_key.get().strip()
+        return data
+
     def _apply_keys(self) -> None:
+        from . import config as cfg
         g, a = self.gemini_key.get().strip(), self.anthropic_key.get().strip()
         if g:
             os.environ["GEMINI_API_KEY"] = g
         if a:
             os.environ["ANTHROPIC_API_KEY"] = a
-        self.status_var.set("API keys applied to this session")
-        messagebox.showinfo("Fissure", "Keys applied for this session (in-memory + os.environ).")
+        remember = bool(self.remember_keys.get())
+        try:
+            if remember:
+                cfg.save_config(self._settings_snapshot(include_keys=True))
+            else:
+                # keep non-secret prefs but drop any previously saved keys
+                cfg.save_config(self._settings_snapshot(include_keys=False))
+                cfg.clear_secrets()
+        except OSError as exc:
+            messagebox.showerror("Fissure", f"Could not write config: {exc}")
+            return
+        where = f"saved to {cfg.CONFIG_PATH}" if remember else "applied for this session only"
+        self.status_var.set(f"API keys {where}")
+        messagebox.showinfo("Fissure", f"Keys applied to this session.\n\n{where}.")
+
+    def _forget_keys(self) -> None:
+        from . import config as cfg
+        cfg.clear_secrets()
+        self.remember_keys.set(False)
+        for env in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY"):
+            os.environ.pop(env, None)
+        self.gemini_key.set("")
+        self.anthropic_key.set("")
+        self.status_var.set("Saved keys forgotten")
+        messagebox.showinfo("Fissure", "Saved keys removed from disk and this session.")
 
     def _apply_defaults(self) -> None:
         self.scan_depth.set(self.default_depth.get())
