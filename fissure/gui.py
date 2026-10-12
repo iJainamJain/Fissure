@@ -32,6 +32,8 @@ import asyncio
 import json
 import os
 import queue
+import shutil
+import sys
 import threading
 import webbrowser
 from http.server import ThreadingHTTPServer
@@ -79,6 +81,29 @@ PROVIDERS = {
     "Gemini": ("gemini", "gemini-3.5-flash-lite", "GEMINI_API_KEY", GeminiClient),
     "Anthropic": ("anthropic", "claude-opus-5-5", "ANTHROPIC_API_KEY", AnthropicClient),
 }
+
+
+def _extension_dir() -> Path:
+    """Path to the unpacked browser extension.
+
+    From source: the repo's ``extension/`` folder. Frozen into the one-file exe:
+    the bundled copy lives in a temp dir that disappears on exit, so copy it once
+    to a persistent location (~/.fissure/extension) and return that — Chrome needs
+    the folder to stay put while the extension is loaded.
+    """
+    if getattr(sys, "frozen", False):
+        src = Path(getattr(sys, "_MEIPASS", ".")) / "extension"
+        dest = Path.home() / ".fissure" / "extension"
+        try:
+            if src.exists():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                if dest.exists():
+                    shutil.rmtree(dest, ignore_errors=True)
+                shutil.copytree(src, dest)
+        except OSError:
+            return src  # fall back to the bundled path
+        return dest
+    return Path(__file__).resolve().parent.parent / "extension"
 
 
 def parse_cookies(raw: str) -> dict[str, str]:
@@ -142,6 +167,11 @@ class FissureGUI:
 
         self._select_section("scan")
 
+        # Auto-start the local service so the browser extension connects without
+        # any manual step (token is fetched by the extension automatically).
+        if self.auto_start_server.get():
+            self._start_server(silent=True)
+
         self.root.after(120, self._drain_queue)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -171,6 +201,7 @@ class FissureGUI:
         self.default_timeout = tk.DoubleVar(value=float(saved.get("default_timeout", 10.0)))
         self.default_concurrency = tk.IntVar(value=int(saved.get("default_concurrency", 8)))
         self.appearance = tk.StringVar(value=saved.get("appearance", "Dark"))
+        self.auto_start_server = tk.BooleanVar(value=bool(saved.get("auto_start_server", True)))
 
     def _api_key_for(self, provider_label: str) -> str:
         var = self.gemini_key if provider_label == "Gemini" else self.anthropic_key
@@ -466,6 +497,8 @@ class FissureGUI:
         self.server_state = ctk.CTkLabel(row1, text="Stopped", font=self._fonts["bold"],
                                          text_color=SEV_COLORS["critical"])
         self.server_state.pack(side="left", padx=14)
+        ctk.CTkCheckBox(row1, text="Auto-start on launch", variable=self.auto_start_server,
+                        command=self._save_prefs_quiet).pack(side="right")
 
         row2 = ctk.CTkFrame(body, fg_color="transparent"); row2.grid(row=1, column=0, sticky="ew", pady=4)
         ctk.CTkLabel(row2, text="URL").pack(side="left", padx=(0, 8))
@@ -481,20 +514,29 @@ class FissureGUI:
 
         scard, sbody = self._card(tab, "Load the browser extension", row=1, column=0,
                                   padx=CARD_PAD, pady=(8, CARD_PAD), sticky="nsew")
-        sbody.grid_rowconfigure(0, weight=1)
-        ext_dir = (Path(__file__).resolve().parent.parent / "extension")
+        sbody.grid_rowconfigure(1, weight=1)
+        ext_dir = _extension_dir()
+        # A one-click path copy avoids the frozen-exe temp-dir confusion.
+        prow = ctk.CTkFrame(sbody, fg_color="transparent"); prow.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        prow.grid_columnconfigure(0, weight=1)
+        self.ext_path = tk.StringVar(value=str(ext_dir))
+        ctk.CTkEntry(prow, textvariable=self.ext_path, state="disabled").grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkButton(prow, text="Copy path", width=100,
+                      command=lambda: (self.root.clipboard_clear(), self.root.clipboard_append(self.ext_path.get()),
+                                       self.status_var.set("Extension path copied"))).grid(row=0, column=1)
         txt = (
             "1. Start the server above.\n"
             "2. Open Chrome and go to  chrome://extensions\n"
             "3. Toggle on  Developer mode  (top-right).\n"
-            "4. Click  Load unpacked  and select the extension folder:\n"
-            f"       {ext_dir}\n"
-            "5. Open the Fissure extension and paste the bearer token shown above.\n"
-            "6. Browse to a target you are authorized to test and start a scan from the\n"
-            "   extension. Each scan still requires an explicit authorization step.\n"
+            "4. Click  Load unpacked  and paste the folder path shown above\n"
+            "   (use 'Copy path') into the dialog's Folder box, then Select Folder.\n"
+            "5. Pin the Fissure extension and click its toolbar icon — it connects\n"
+            "   automatically while this app is running (no token to copy).\n"
+            "6. Browse to a target you are authorized to test, tick the authorization\n"
+            "   box in the popup, and click Scan this page.\n"
         )
         steps = ctk.CTkTextbox(sbody, wrap="word")
-        steps.grid(row=0, column=0, sticky="nsew")
+        steps.grid(row=1, column=0, sticky="nsew")
         steps.insert("1.0", txt)
         steps.configure(state="disabled")
 
@@ -834,13 +876,18 @@ class FissureGUI:
         else:
             self._stop_server()
 
-    def _start_server(self) -> None:
+    def _start_server(self, silent: bool = False) -> None:
+        if self.httpd is not None:
+            return  # already running
         try:
             server_mod._REPORT_DIR.mkdir(parents=True, exist_ok=True)
             self.httpd = ThreadingHTTPServer(("127.0.0.1", 8750), server_mod.Handler)
         except OSError as exc:
-            messagebox.showerror("Server", f"Could not start on 127.0.0.1:8750\n{exc}")
             self.httpd = None
+            if not silent:
+                messagebox.showerror("Server", f"Could not start on 127.0.0.1:8750\n{exc}")
+            else:
+                self.status_var.set(f"Server auto-start skipped ({exc})")
             return
         self.server_thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.server_thread.start()
@@ -882,6 +929,7 @@ class FissureGUI:
             "default_concurrency": self.default_concurrency.get(),
             "appearance": self.appearance.get(),
             "remember_keys": bool(self.remember_keys.get()),
+            "auto_start_server": bool(self.auto_start_server.get()),
         }
         if include_keys:
             data["gemini_api_key"] = self.gemini_key.get().strip()
@@ -909,6 +957,14 @@ class FissureGUI:
         where = f"saved to {cfg.CONFIG_PATH}" if remember else "applied for this session only"
         self.status_var.set(f"API keys {where}")
         messagebox.showinfo("Fissure", f"Keys applied to this session.\n\n{where}.")
+
+    def _save_prefs_quiet(self) -> None:
+        """Persist preferences (e.g. auto-start toggle) without prompting."""
+        from . import config as cfg
+        try:
+            cfg.save_config(self._settings_snapshot(include_keys=bool(self.remember_keys.get())))
+        except OSError:
+            pass
 
     def _forget_keys(self) -> None:
         from . import config as cfg

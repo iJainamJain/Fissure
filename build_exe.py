@@ -24,6 +24,7 @@ def main() -> int:
         "--collect-all", "httpx",  # ensure httpx + its deps are bundled
         "--collect-all", "httpcore",
         "--collect-all", "customtkinter",  # bundle CustomTkinter themes/assets
+        "--add-data", "extension;extension",  # ship the browser extension inside the exe
         "fissure/gui_entry.py",
     ]
     print("Running:", " ".join(cmd))

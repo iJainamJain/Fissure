@@ -28,8 +28,6 @@ from pathlib import Path
 from .engine import Engine
 from .targets import ScopeError, TargetError, normalize_target, validate_scope
 
-# Only requests claiming this origin may talk to us (set per-extension-id in prod).
-ALLOWED_ORIGIN = "*"  # tightened to the extension origin once its id is known
 TOKEN = secrets.token_urlsafe(24)
 _SCANS: dict[str, dict] = {}
 _REPORT_DIR = Path.home() / ".fissure" / "server_reports"
@@ -55,9 +53,16 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- helpers ----
     def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        # Only browser extensions get CORS access. Regular web pages receive no
+        # ACAO header, so a malicious site cannot read responses or pass the
+        # JSON preflight — it can't drive the local scanner. The extension itself
+        # reaches the server via its host permission (CORS-exempt) regardless.
+        origin = self.headers.get("Origin", "")
+        if origin.startswith(("chrome-extension://", "moz-extension://")):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Vary", "Origin")
 
     def _json(self, code: int, body: dict):
         data = json.dumps(body).encode()
@@ -92,10 +97,18 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        from urllib.parse import urlsplit
+        path = urlsplit(self.path).path.strip("/")
+        # Unauthenticated handshake endpoints (web pages still can't read the
+        # response — no ACAO — so the token stays out of their reach):
+        if path == "ping":
+            return self._json(200, {"ok": True, "name": "Fissure", "running": True})
+        if path == "token":
+            return self._json(200, {"token": TOKEN})
+
         if not self._authed():
             return self._json(401, {"error": "unauthorized"})
-        from urllib.parse import urlsplit
-        parts = urlsplit(self.path).path.strip("/").split("/")
+        parts = path.split("/")
         if len(parts) == 2 and parts[0] == "scan":
             scan = _SCANS.get(parts[1])
             return self._json(200, scan) if scan else self._json(404, {"error": "not_found"})

@@ -3,40 +3,77 @@
 <head>
 <meta charset="utf-8">
 <style>
-  body { font-family: system-ui, Segoe UI, sans-serif; width: 320px; margin: 0; padding: 14px; color: #1a1a1a; }
-  h1 { font-size: 15px; margin: 0 0 2px; color: #12233b; }
-  .sub { font-size: 11px; color: #667; margin-bottom: 10px; }
-  .url { font-family: ui-monospace, monospace; font-size: 11px; background: #f1f3f5; padding: 6px 8px;
-         border-radius: 6px; word-break: break-all; margin-bottom: 10px; }
-  label { font-size: 12px; display: block; margin: 8px 0 3px; }
-  input[type=text] { width: 100%; box-sizing: border-box; padding: 5px; font-size: 12px; }
-  .auth { font-size: 12px; background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px;
-          padding: 8px; margin: 10px 0; }
-  button { width: 100%; padding: 8px; font-size: 13px; font-weight: 600; color: #fff; background: #12233b;
-           border: none; border-radius: 6px; cursor: pointer; }
-  button:disabled { background: #9aa5b1; cursor: not-allowed; }
-  #status { font-size: 12px; margin-top: 10px; white-space: pre-wrap; }
-  a { color: #1b6ec2; }
+  :root {
+    --bg: #15171c; --card: #1d2026; --line: #2a2e37; --text: #e6e9ef;
+    --muted: #8b98a5; --accent: #2f6df6; --accent2: #2457c9;
+    --ok: #46a758; --bad: #e5484d; --warn: #f5a623;
+  }
+  * { box-sizing: border-box; }
+  body { width: 340px; margin: 0; font-family: system-ui, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--text); }
+  .head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 6px; }
+  .head .logo { font-size: 18px; font-weight: 700; }
+  .head .sub { font-size: 11px; color: var(--muted); margin-left: auto; }
+  .status { display: flex; align-items: center; gap: 8px; margin: 2px 16px 10px;
+            font-size: 12px; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); flex: none; }
+  .dot.ok { background: var(--ok); }
+  .dot.wait { background: var(--warn); }
+  .body { padding: 0 16px 16px; }
+  .url { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--text);
+         background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+         padding: 8px 10px; word-break: break-all; margin-bottom: 12px; }
+  .auth { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px;
+          background: #22262f; border: 1px solid var(--line); border-radius: 8px;
+          padding: 10px; margin-bottom: 12px; }
+  .auth input { margin-top: 1px; }
+  button.primary { width: 100%; padding: 10px; font-size: 14px; font-weight: 600; color: #fff;
+          background: var(--accent); border: none; border-radius: 8px; cursor: pointer; }
+  button.primary:hover { background: var(--accent2); }
+  button.primary:disabled { background: #3a4150; color: #8b98a5; cursor: not-allowed; }
+  .link { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer;
+          padding: 0; margin-top: 8px; }
+  #msg { font-size: 12px; margin-top: 12px; white-space: pre-wrap; line-height: 1.45; }
+  #result { margin-top: 12px; }
+  .finding { font-size: 12px; padding: 4px 0; border-top: 1px solid var(--line); }
+  .sev { display: inline-block; min-width: 54px; font-weight: 700; font-size: 10px;
+         text-transform: uppercase; }
+  .sev.critical { color: #ff6b6b; } .sev.high { color: #ff9f5a; }
+  .sev.medium { color: #ffd166; } .sev.low { color: #7bd88f; }
+  .advanced { margin-top: 12px; font-size: 11px; color: var(--muted); }
+  .advanced summary { cursor: pointer; }
+  .advanced input { width: 100%; margin-top: 6px; padding: 5px; font-size: 11px;
+          background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }
+  a { color: var(--accent); }
 </style>
 </head>
 <body>
-  <h1>🔎 Fissure</h1>
-  <div class="sub">Scan the current page — authorized use only.</div>
-
-  <div class="url" id="url">(reading tab…)</div>
-
-  <label>Local server</label>
-  <input type="text" id="server" value="http://127.0.0.1:8750">
-  <label>Bearer token (from the Fissure server console)</label>
-  <input type="text" id="token" placeholder="paste token">
-
-  <div class="auth">
-    <label style="margin:0"><input type="checkbox" id="authorize">
-      I am authorized to security-test this target.</label>
+  <div class="head">
+    <span class="logo">🔎 Fissure</span>
+    <span class="sub">authorized use only</span>
   </div>
 
-  <button id="scan" disabled>Scan this page</button>
-  <div id="status"></div>
+  <div class="status"><span class="dot" id="dot"></span><span id="conn">Connecting…</span></div>
+
+  <div class="body">
+    <div class="url" id="url">(reading tab…)</div>
+
+    <label class="auth">
+      <input type="checkbox" id="authorize">
+      <span>I am authorized to security-test this target.</span>
+    </label>
+
+    <button class="primary" id="scan" disabled>Scan this page</button>
+    <div id="msg"></div>
+    <div id="result"></div>
+
+    <details class="advanced">
+      <summary>Advanced</summary>
+      <label>Local server</label>
+      <input type="text" id="server" value="http://127.0.0.1:8750">
+      <button class="link" id="retry">Reconnect</button>
+    </details>
+  </div>
 
   <script src="popup.js"></script>
 </body>

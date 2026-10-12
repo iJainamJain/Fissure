@@ -68,6 +68,29 @@ def test_decline_does_not_run(vulnlab_url):
         httpd.shutdown()
 
 
+def test_ping_and_token_need_no_auth():
+    # The extension bootstraps via /ping and /token without a bearer token.
+    httpd, base = _start()
+    try:
+        with httpx.Client() as c:
+            assert c.get(f"{base}/ping").json()["running"] is True
+            assert c.get(f"{base}/token").json()["token"] == srv.TOKEN
+    finally:
+        httpd.shutdown()
+
+
+def test_cors_only_for_extension_origin():
+    httpd, base = _start()
+    try:
+        with httpx.Client() as c:
+            web = c.get(f"{base}/ping", headers={"Origin": "https://evil.example"})
+            assert "access-control-allow-origin" not in {k.lower() for k in web.headers}
+            ext = c.get(f"{base}/ping", headers={"Origin": "chrome-extension://abc"})
+            assert ext.headers.get("access-control-allow-origin") == "chrome-extension://abc"
+    finally:
+        httpd.shutdown()
+
+
 def test_public_target_refused():
     httpd, base = _start()
     try:
