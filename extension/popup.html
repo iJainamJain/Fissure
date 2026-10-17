@@ -3,48 +3,102 @@
 <head>
 <meta charset="utf-8">
 <style>
+  /* ---- reset ---- */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
   :root {
-    --bg: #15171c; --card: #1d2026; --line: #2a2e37; --text: #e6e9ef;
-    --muted: #8b98a5; --accent: #2f6df6; --accent2: #2457c9;
+    --bg: #15171c; --card: #1d2026; --card2: #22262f; --line: #2a2e37;
+    --text: #e6e9ef; --muted: #8b98a5; --accent: #2f6df6; --accent2: #2457c9;
+    --critical: #e5484d; --high: #f76808; --medium: #f5a623; --low: #46a758;
     --ok: #46a758; --bad: #e5484d; --warn: #f5a623;
   }
-  * { box-sizing: border-box; }
-  body { width: 340px; margin: 0; font-family: system-ui, "Segoe UI", sans-serif;
-         background: var(--bg); color: var(--text); }
-  .head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 6px; }
-  .head .logo { font-size: 18px; font-weight: 700; }
-  .head .sub { font-size: 11px; color: var(--muted); margin-left: auto; }
-  .status { display: flex; align-items: center; gap: 8px; margin: 2px 16px 10px;
+
+  body {
+    width: 380px;
+    font-family: system-ui, "Segoe UI", sans-serif;
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.45;
+  }
+
+  /* ---- header ---- */
+  .head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 8px; }
+  .head .logo { font-size: 17px; font-weight: 700; letter-spacing: .2px; }
+  .head .sub { font-size: 10.5px; color: var(--muted); margin-left: auto;
+               text-transform: uppercase; letter-spacing: .4px; }
+
+  .status { display: flex; align-items: center; gap: 8px; margin: 0 16px 12px;
             font-size: 12px; color: var(--muted); }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); flex: none; }
-  .dot.ok { background: var(--ok); }
-  .dot.wait { background: var(--warn); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); flex: none;
+         box-shadow: 0 0 0 3px rgba(229,72,77,.15); transition: background .2s, box-shadow .2s; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(70,167,88,.15); }
+  .dot.wait { background: var(--warn); box-shadow: 0 0 0 3px rgba(245,166,35,.18);
+              animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
   .body { padding: 0 16px 16px; }
+
   .url { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--text);
          background: var(--card); border: 1px solid var(--line); border-radius: 8px;
-         padding: 8px 10px; word-break: break-all; margin-bottom: 12px; }
+         padding: 9px 10px; word-break: break-all; margin-bottom: 12px; }
+
   .auth { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px;
-          background: #22262f; border: 1px solid var(--line); border-radius: 8px;
+          background: var(--card2); border: 1px solid var(--line); border-radius: 8px;
           padding: 10px; margin-bottom: 12px; }
-  .auth input { margin-top: 1px; }
-  button.primary { width: 100%; padding: 10px; font-size: 14px; font-weight: 600; color: #fff;
-          background: var(--accent); border: none; border-radius: 8px; cursor: pointer; }
+  .auth input { margin-top: 2px; accent-color: var(--accent); }
+
+  button.primary { width: 100%; padding: 11px; font-size: 14px; font-weight: 600; color: #fff;
+          background: var(--accent); border: none; border-radius: 8px; cursor: pointer;
+          transition: background .15s; }
   button.primary:hover { background: var(--accent2); }
   button.primary:disabled { background: #3a4150; color: #8b98a5; cursor: not-allowed; }
+
   .link { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer;
           padding: 0; margin-top: 8px; }
-  #msg { font-size: 12px; margin-top: 12px; white-space: pre-wrap; line-height: 1.45; }
+  a { color: var(--accent); }
+
+  #msg { font-size: 12px; margin-top: 12px; white-space: pre-wrap; line-height: 1.45;
+         color: var(--muted); }
+  #msg:empty { margin-top: 0; }
+
+  /* ---- scanning progress bar (indeterminate) ---- */
+  .scanbar { display: none; margin-top: 12px; height: 6px; border-radius: 3px;
+             background: var(--card2); overflow: hidden; }
+  .scanbar.show { display: block; }
+  .scanbar > i { display: block; height: 100%; width: 40%; border-radius: 3px;
+                 background: var(--accent); animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+
+  /* ---- result card ---- */
   #result { margin-top: 12px; }
-  .finding { font-size: 12px; padding: 4px 0; border-top: 1px solid var(--line); }
-  .sev { display: inline-block; min-width: 54px; font-weight: 700; font-size: 10px;
-         text-transform: uppercase; }
-  .sev.critical { color: #ff6b6b; } .sev.high { color: #ff9f5a; }
-  .sev.medium { color: #ffd166; } .sev.low { color: #7bd88f; }
+  .rcard { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+           padding: 12px; }
+  .rtop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chip { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .4px;
+          text-transform: uppercase; padding: 4px 10px; border-radius: 999px; color: #0d0f13; }
+  .chip.clean, .chip.low { background: var(--low); color: #0d0f13; }
+  .chip.medium { background: var(--medium); color: #0d0f13; }
+  .chip.high { background: var(--high); color: #fff; }
+  .chip.critical { background: var(--critical); color: #fff; }
+  .chip.info { background: #3a4150; color: #fff; }
+  .scount { display: inline-block; font-size: 12px; font-weight: 600; color: var(--muted);
+            padding: 4px 10px; border-radius: 999px; background: var(--card2); }
+  .rmeter { height: 6px; border-radius: 3px; background: var(--card2); margin-top: 10px;
+            overflow: hidden; }
+  .rmeter > i { display: block; height: 100%; border-radius: 3px; width: 0; }
+  .rstats { display: flex; gap: 8px; margin-top: 10px; }
+  .stat { flex: 1; background: var(--card2); border-radius: 8px; padding: 8px 10px; }
+  .stat .n { font-size: 18px; font-weight: 700; }
+  .stat .l { font-size: 10.5px; color: var(--muted); text-transform: uppercase;
+             letter-spacing: .3px; }
+  .rlink { margin-top: 10px; font-size: 12px; }
+
+  /* ---- advanced ---- */
   .advanced { margin-top: 12px; font-size: 11px; color: var(--muted); }
   .advanced summary { cursor: pointer; }
-  .advanced input { width: 100%; margin-top: 6px; padding: 5px; font-size: 11px;
+  .advanced input { width: 100%; margin-top: 6px; padding: 6px; font-size: 11px;
           background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }
-  a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -64,6 +118,8 @@
     </label>
 
     <button class="primary" id="scan" disabled>Scan this page</button>
+
+    <div class="scanbar" id="scanbar"><i></i></div>
     <div id="msg"></div>
     <div id="result"></div>
 

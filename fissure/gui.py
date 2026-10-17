@@ -140,13 +140,22 @@ class FissureGUI:
         root.geometry("1000x720")
         root.minsize(900, 640)
 
+        # Small, consistent type scale: title (20) > section (14) > body (12),
+        # plus display sizes for the KPI stat row.
         self._fonts = {
             "logo": ctk.CTkFont(size=22, weight="bold"),
+            "title": ctk.CTkFont(size=20, weight="bold"),
             "nav": ctk.CTkFont(size=14),
-            "card_title": ctk.CTkFont(size=13, weight="bold"),
+            "section": ctk.CTkFont(size=14, weight="bold"),
+            "card_title": ctk.CTkFont(size=14, weight="bold"),
             "status": ctk.CTkFont(size=12),
+            "body": ctk.CTkFont(size=12),
+            "caption": ctk.CTkFont(size=11),
             "mono": ctk.CTkFont(family="Consolas", size=12),
             "bold": ctk.CTkFont(size=12, weight="bold"),
+            "stat": ctk.CTkFont(size=22, weight="bold"),
+            "chip": ctk.CTkFont(size=14, weight="bold"),
+            "placeholder": ctk.CTkFont(size=13),
         }
 
         self._init_settings_vars()
@@ -260,8 +269,8 @@ class FissureGUI:
                      text_color=("#6b7280", "#8b98a5")).grid(row=1, column=0, padx=22, pady=(0, 18), sticky="w")
 
         self.nav_buttons: dict[str, ctk.CTkButton] = {}
-        items = [("scan", "  Scan"), ("ai", "  AI Agent"),
-                 ("server", "  Server & Extension"), ("settings", "  Settings")]
+        items = [("scan", "\U0001f50e  Scan"), ("ai", "\U0001f916  AI Agent"),
+                 ("server", "\U0001f9e9  Server & Extension"), ("settings", "⚙  Settings")]
         for i, (key, label) in enumerate(items):
             btn = ctk.CTkButton(
                 self.sidebar, text=label, anchor="w", height=42,
@@ -270,7 +279,7 @@ class FissureGUI:
                 hover_color=("#d7dbe3", "#30333c"),
                 command=lambda k=key: self._select_section(k),
             )
-            btn.grid(row=2 + i, column=0, padx=12, pady=4, sticky="ew")
+            btn.grid(row=2 + i, column=0, padx=12, pady=3, sticky="ew")
             self.nav_buttons[key] = btn
 
         ctk.CTkLabel(self.sidebar, wraplength=180, justify="left",
@@ -293,12 +302,16 @@ class FissureGUI:
     def _build_statusbar(self) -> None:
         bar = ctk.CTkFrame(self.root, height=34, corner_radius=0)
         bar.grid(row=1, column=0, columnspan=2, sticky="ew")
-        bar.grid_columnconfigure(0, weight=1)
+        bar.grid_columnconfigure(1, weight=1)
+        # A small state dot: green when idle, amber while busy.
+        self.status_dot = ctk.CTkLabel(bar, text="●", width=14,
+                                       text_color=SEV_COLORS["low"], font=self._fonts["status"])
+        self.status_dot.grid(row=0, column=0, padx=(16, 4), pady=4, sticky="w")
         self.status_var = tk.StringVar(value="Idle")
         ctk.CTkLabel(bar, textvariable=self.status_var, font=self._fonts["status"],
-                     anchor="w").grid(row=0, column=0, padx=16, pady=4, sticky="w")
+                     anchor="w").grid(row=0, column=1, padx=(0, 16), pady=4, sticky="w")
         self.busy = ctk.CTkProgressBar(bar, width=180, mode="indeterminate")
-        self.busy.grid(row=0, column=1, padx=16, pady=4, sticky="e")
+        self.busy.grid(row=0, column=2, padx=16, pady=4, sticky="e")
         self.busy.set(0)
 
     def _select_section(self, key: str) -> None:
@@ -309,6 +322,78 @@ class FissureGUI:
             else:
                 btn.configure(fg_color="transparent", text_color=("#1f2937", "#c7cdd8"),
                               hover_color=("#d7dbe3", "#30333c"))
+
+    # ----------------------------------------------------------- color helpers
+    def _label_color(self, label: str) -> str:
+        """Severity/risk-label (CLEAN/LOW/MEDIUM/HIGH/CRITICAL) -> vivid color."""
+        key = (label or "").strip().lower()
+        if key in SEV_COLORS:
+            return SEV_COLORS[key]
+        if key == "clean":
+            return SEV_COLORS["low"]
+        return SEV_COLORS["info"]
+
+    # --------------------------------------------------------------- KPI cards
+    def _risk_chip(self, parent, col: int):
+        """A big colored pill showing the overall risk label (filled by severity)."""
+        chip = ctk.CTkLabel(parent, text="—", font=self._fonts["chip"],
+                            corner_radius=10, fg_color="#3a4150",
+                            text_color="#ffffff", height=58)
+        chip.grid(row=0, column=col, padx=(0, 10), sticky="nsew")
+        return chip
+
+    def _stat_card(self, parent, label: str, col: int):
+        """A small rounded card with a big value over a muted caption.
+
+        Returns the value label so the caller can update it later.
+        """
+        card = ctk.CTkFrame(parent, corner_radius=10)
+        card.grid(row=0, column=col, padx=(0, 10), sticky="nsew")
+        card.grid_columnconfigure(0, weight=1)
+        val = ctk.CTkLabel(card, text="—", font=self._fonts["stat"], anchor="w")
+        val.grid(row=0, column=0, padx=14, pady=(10, 0), sticky="w")
+        ctk.CTkLabel(card, text=label, font=self._fonts["caption"], anchor="w",
+                     text_color=("#6b7280", "#8b98a5")).grid(
+            row=1, column=0, padx=14, pady=(0, 12), sticky="w")
+        return val
+
+    def _make_stat_row(self, parent, third_label: str):
+        """A responsive row of KPI cards: risk chip + score + findings + <third>.
+
+        Returns (frame, chip, score_val, findings_val, third_val).
+        """
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="kpi")
+        chip = self._risk_chip(row, 0)
+        score_val = self._stat_card(row, "Risk score", 1)
+        findings_val = self._stat_card(row, "Findings", 2)
+        third_val = self._stat_card(row, third_label, 3)
+        # Drop the trailing right padding on the last card so the row aligns flush.
+        third_val.master.grid_configure(padx=(0, 0))
+        return row, chip, score_val, findings_val, third_val
+
+    def _set_kpis(self, chip, score_val, findings_val, third_val, summary: dict,
+                  third_key: str) -> None:
+        """Populate a KPI row from a report ``summary`` dict."""
+        label = (summary.get("label") or "CLEAN").upper()
+        color = self._label_color(label)
+        chip.configure(text=label, fg_color=color,
+                       text_color="#0d0f13" if label in ("MEDIUM", "LOW") else "#ffffff")
+        score_val.configure(text=str(summary.get("score", 0)))
+        findings_val.configure(text=str(summary.get("total_findings", 0)))
+        third_val.configure(text=str(summary.get(third_key, 0)))
+
+    def _risk_meter(self, parent, row: int):
+        """A thin progress bar whose fraction tracks the risk score; colored by label."""
+        meter = ctk.CTkProgressBar(parent, height=6, corner_radius=3)
+        meter.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        meter.set(0)
+        return meter
+
+    def _set_meter(self, meter, summary: dict) -> None:
+        score = int(summary.get("score", 0) or 0)
+        meter.configure(progress_color=self._label_color((summary.get("label") or "CLEAN")))
+        meter.set(min(score / 60.0, 1.0))  # 60 = CRITICAL threshold
 
     # ------------------------------------------------------------- card helper
     def _card(self, parent, title: str, **grid):
@@ -327,7 +412,7 @@ class FissureGUI:
     # ----------------------------------------------------------------- scan tab
     def _build_scan_section(self, tab) -> None:
         tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(1, weight=1)
+        tab.grid_rowconfigure(2, weight=1)
 
         _, body = self._card(tab, "Target", row=0, column=0,
                              padx=CARD_PAD, pady=(CARD_PAD, 8), sticky="ew")
@@ -362,24 +447,37 @@ class FissureGUI:
         ctk.CTkEntry(row3, textvariable=self.scan_cookie,
                      placeholder_text="e.g. PHPSESSID=abc; security=low").grid(row=0, column=1, sticky="ew")
 
-        # findings card (expands)
-        fcard, fbody = self._card(tab, "Findings", row=1, column=0,
-                                  padx=CARD_PAD, pady=8, sticky="nsew")
-        fbody.grid_rowconfigure(0, weight=1)
-        fbody.grid_columnconfigure(0, weight=1)
-        self.scan_tree, sb = self._make_findings_tree(fbody)
-        self.scan_tree.grid(row=0, column=0, sticky="nsew")
-        sb.grid(row=0, column=1, sticky="ns")
-        self.scan_tree.bind("<<TreeviewSelect>>", self._show_scan_evidence)
+        # KPI stat row (populated on scan completion)
+        krow = ctk.CTkFrame(tab, fg_color="transparent")
+        krow.grid(row=1, column=0, sticky="ew", padx=CARD_PAD, pady=(0, 8))
+        krow.grid_columnconfigure(0, weight=1)
+        (statrow, self.scan_chip, self.scan_stat_score, self.scan_stat_findings,
+         self.scan_stat_endpoints) = self._make_stat_row(krow, "Injectables")
+        statrow.grid(row=0, column=0, sticky="ew")
 
-        _, ebody = self._card(tab, "Evidence", row=2, column=0,
+        # findings card (expands): thin risk meter above a treeview with empty state
+        fcard, fbody = self._card(tab, "Findings", row=2, column=0,
+                                  padx=CARD_PAD, pady=8, sticky="nsew")
+        fbody.grid_rowconfigure(1, weight=1)
+        fbody.grid_columnconfigure(0, weight=1)
+        self.scan_meter = self._risk_meter(fbody, row=0)
+        self.scan_tree, sb = self._make_findings_tree(fbody)
+        self.scan_tree.grid(row=1, column=0, sticky="nsew")
+        sb.grid(row=1, column=1, sticky="ns")
+        self.scan_tree.bind("<<TreeviewSelect>>", self._show_scan_evidence)
+        self.scan_empty = ctk.CTkLabel(fbody, text="Run a scan to see findings.",
+                                       font=self._fonts["placeholder"],
+                                       text_color=("#6b7280", "#8b98a5"))
+        self.scan_empty.grid(row=1, column=0, columnspan=2)
+
+        _, ebody = self._card(tab, "Evidence", row=3, column=0,
                               padx=CARD_PAD, pady=8, sticky="ew")
         self.scan_evidence = ctk.CTkTextbox(ebody, height=90, wrap="word", font=self._fonts["mono"])
         self.scan_evidence.grid(row=0, column=0, sticky="ew")
         self.scan_evidence.insert("1.0", "Select a finding to see its evidence.")
         self.scan_evidence.configure(state="disabled")
 
-        bar = ctk.CTkFrame(tab, fg_color="transparent"); bar.grid(row=3, column=0, sticky="ew",
+        bar = ctk.CTkFrame(tab, fg_color="transparent"); bar.grid(row=4, column=0, sticky="ew",
                                                                   padx=CARD_PAD, pady=(8, CARD_PAD))
         bar.grid_columnconfigure(0, weight=1)
         self.scan_progress = ctk.CTkProgressBar(bar, mode="determinate")
@@ -397,7 +495,7 @@ class FissureGUI:
     # ------------------------------------------------------------------- ai tab
     def _build_ai_section(self, tab) -> None:
         tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(2, weight=1)
+        tab.grid_rowconfigure(3, weight=1)
 
         _, body = self._card(tab, "AI agent run", row=0, column=0,
                              padx=CARD_PAD, pady=(CARD_PAD, 8), sticky="ew")
@@ -443,7 +541,15 @@ class FissureGUI:
         if _AI_IMPORT_ERROR:
             self.ai_warn.configure(text=f"AI stack unavailable: {_AI_IMPORT_ERROR}")
 
-        mid = ctk.CTkFrame(tab, fg_color="transparent"); mid.grid(row=2, column=0, sticky="nsew",
+        # KPI stat row (populated on AI run completion)
+        krow = ctk.CTkFrame(tab, fg_color="transparent")
+        krow.grid(row=2, column=0, sticky="ew", padx=CARD_PAD, pady=(0, 8))
+        krow.grid_columnconfigure(0, weight=1)
+        (statrow, self.ai_chip, self.ai_stat_score, self.ai_stat_findings,
+         self.ai_stat_injectables) = self._make_stat_row(krow, "Injectables")
+        statrow.grid(row=0, column=0, sticky="ew")
+
+        mid = ctk.CTkFrame(tab, fg_color="transparent"); mid.grid(row=3, column=0, sticky="nsew",
                                                                  padx=CARD_PAD, pady=8)
         mid.grid_rowconfigure(0, weight=1)
         mid.grid_columnconfigure(0, weight=1)
@@ -457,19 +563,24 @@ class FissureGUI:
         self.ai_trace.configure(state="disabled")
 
         ncard, nbody = self._card(mid, "Findings", row=0, column=1, padx=(6, 0), sticky="nsew")
-        nbody.grid_rowconfigure(0, weight=1)
+        nbody.grid_rowconfigure(1, weight=1)
         nbody.grid_columnconfigure(0, weight=1)
+        self.ai_meter = self._risk_meter(nbody, row=0)
         self.ai_tree, asb = self._make_findings_tree(nbody, cols=("severity", "title", "location"))
-        self.ai_tree.grid(row=0, column=0, sticky="nsew")
-        asb.grid(row=0, column=1, sticky="ns")
+        self.ai_tree.grid(row=1, column=0, sticky="nsew")
+        asb.grid(row=1, column=1, sticky="ns")
+        self.ai_empty = ctk.CTkLabel(nbody, text="Run the AI agent to see findings.",
+                                     font=self._fonts["placeholder"], wraplength=200,
+                                     text_color=("#6b7280", "#8b98a5"))
+        self.ai_empty.grid(row=1, column=0, columnspan=2)
 
-        _, xbody = self._card(tab, "Executive summary", row=3, column=0,
+        _, xbody = self._card(tab, "Executive summary", row=4, column=0,
                              padx=CARD_PAD, pady=8, sticky="ew")
         self.ai_exec = ctk.CTkTextbox(xbody, height=90, wrap="word")
         self.ai_exec.grid(row=0, column=0, sticky="ew")
         self.ai_exec.configure(state="disabled")
 
-        bar = ctk.CTkFrame(tab, fg_color="transparent"); bar.grid(row=4, column=0, sticky="ew",
+        bar = ctk.CTkFrame(tab, fg_color="transparent"); bar.grid(row=5, column=0, sticky="ew",
                                                                  padx=CARD_PAD, pady=(8, CARD_PAD))
         bar.grid_columnconfigure(0, weight=1)
         self.ai_status = ctk.CTkLabel(bar, text="Idle", font=self._fonts["bold"], anchor="w")
@@ -653,6 +764,7 @@ class FissureGUI:
         self._scanning = True
         self.scan_btn.configure(state="disabled", text="Scanning…")
         self.scan_tree.delete(*self.scan_tree.get_children())
+        self.scan_empty.configure(text="Scanning…"); self.scan_empty.grid()
         self.scan_html_btn.configure(state="disabled")
         self.scan_save_btn.configure(state="disabled")
         self._scan_steps = 0
@@ -689,6 +801,13 @@ class FissureGUI:
         for mod in report["modules"].values():
             for fd in mod["findings"]:
                 self._insert_finding(self.scan_tree, fd, module=mod["module"])
+        self._set_kpis(self.scan_chip, self.scan_stat_score, self.scan_stat_findings,
+                       self.scan_stat_endpoints, s, "injectables_found")
+        self._set_meter(self.scan_meter, s)
+        if s["total_findings"]:
+            self.scan_empty.grid_remove()
+        else:
+            self.scan_empty.configure(text="No findings — target looks clean."); self.scan_empty.grid()
         self.scan_summary.configure(text=f"{s['label']} · {s['score']} pts · {s['total_findings']} findings")
         self.scan_btn.configure(state="normal", text="Scan  ▶")
         self.scan_html_btn.configure(state="normal" if self.scan_html else "disabled")
@@ -774,6 +893,7 @@ class FissureGUI:
         self._refresh_ai_btn()
         self.ai_btn.configure(text="Running…")
         self.ai_tree.delete(*self.ai_tree.get_children())
+        self.ai_empty.configure(text="Running…"); self.ai_empty.grid()
         self.ai_html_btn.configure(state="disabled")
         self.ai_save_btn.configure(state="disabled")
         self._set_text(self.ai_exec, "")
@@ -842,6 +962,14 @@ class FissureGUI:
                 for fd in mod["findings"]:
                     self._insert_finding(self.ai_tree, fd, cols=("severity", "title", "location"))
             self._set_text(self.ai_exec, report.get("executive_summary", "") or "(no executive summary)")
+            s = report.get("summary", {})
+            self._set_kpis(self.ai_chip, self.ai_stat_score, self.ai_stat_findings,
+                           self.ai_stat_injectables, s, "injectables_found")
+            self._set_meter(self.ai_meter, s)
+        if findings:
+            self.ai_empty.grid_remove()
+        else:
+            self.ai_empty.configure(text="No findings."); self.ai_empty.grid()
         self.ai_status.configure(text=f"Done · {findings} findings · {steps} steps · {stop}")
         self.ai_btn.configure(text="Run AI Scan  ▶")
         self.ai_html_btn.configure(state="normal" if self.ai_html else "disabled")
@@ -1030,10 +1158,12 @@ class FissureGUI:
         if busy:
             self.busy.configure(mode="indeterminate")
             self.busy.start()
+            self.status_dot.configure(text_color=SEV_COLORS["medium"])
         else:
             self.busy.stop()
             self.busy.configure(mode="determinate")
             self.busy.set(0)
+            self.status_dot.configure(text_color=SEV_COLORS["low"])
         if status is not None:
             self.status_var.set(status)
 
