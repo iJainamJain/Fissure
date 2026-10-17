@@ -97,9 +97,9 @@ def _extension_dir() -> Path:
         try:
             if src.exists():
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                if dest.exists():
-                    shutil.rmtree(dest, ignore_errors=True)
-                shutil.copytree(src, dest)
+                # Overwrite files in place (NEVER delete the dir first) — Chrome may
+                # have this folder loaded, and removing it would break the extension.
+                shutil.copytree(src, dest, dirs_exist_ok=True)
         except OSError:
             return src  # fall back to the bundled path
         return dest
